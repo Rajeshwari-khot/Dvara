@@ -1,14 +1,18 @@
 import json
 from fastapi import FastAPI
+from pydantic import BaseModel
+from pymysql import Date
 app = FastAPI()
 @app.get("/partnerHandcontext")
 async def root():
     data=open("partner.json","r")
-    json_data=json.load(data)
-    return json_data
+    response=json.load(data)
+    return response
 
-@app.get("/cutomerdata")
+@app.get("/customerdata")
 async def customer_data():
-    data=open("partner.json","r")
-    json_data=json.load(data)
-    return(json_data['enrollmentDTO']['customer'])
+    json_data=await root()
+    return (json_data['enrollmentDTO']['customer'])
+
+
+
