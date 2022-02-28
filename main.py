@@ -10,7 +10,7 @@ async def root():
     response=json.load(data)
     return response
 
-@app.post("/customerdata")
+@app.get("/customerdata")
 async def customer_data():
     customer_request=await root()
     json_data=(customer_request['enrollmentDTO']['customer'])
@@ -56,18 +56,18 @@ async def customer_data():
       accno=(ln['accountNumber'])
       ifsccode=(ln['ifscCode'])
       acctype=(ln['accountType'])
-    date_data=(customer_request['enrollmentDTO']['customer']['dateOfBirth'])
-    for ln in [date_data]:
+    # date_data=(customer_request['enrollmentDTO']['customer']['dateOfBirth'])
+    # for ln in [date_data]:
        
-        Year=(ln['year'])
-        Month=(ln['month'])
-        Value=(ln['monthValue'])
-        day=(ln['dayOfMonth'])
-        week=(ln['dayOfWeek'])
-        era=(ln['era'])
-        dayyear=(ln['dayOfYear'])
-        leap=(ln['leapYear'])
-        sample=(str(Year)+str(Month)+str(Value)+str(day)+str( week)+str(era)+str(dayyear)+str(leap))
+    #     Year=(ln['year'])
+    #     Month=(ln['month'])
+    #     Value=(ln['monthValue'])
+    #     day=(ln['dayOfMonth'])
+    #     week=(ln['dayOfWeek'])
+    #     era=(ln['era'])
+    #     dayyear=(ln['dayOfYear'])
+    #     leap=(ln['leapYear'])
+    #     sample=(str(Year)+str(Month)+str(Value)+str(day)+str( week)+str(era)+str(dayyear)+str(leap))
     
 
     if lastname or middlename is None:
@@ -89,7 +89,7 @@ async def customer_data():
               "account_number":accno,
               "ifsc_code":ifsccode,
               "account_type":acctype,
-              "date_of_birth":sample
+            #   "date_of_birth":sample
             
              
 
