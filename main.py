@@ -1,14 +1,37 @@
 import json
-from fastapi import FastAPI
+from fastapi import Body, FastAPI
 from pydantic import BaseModel
 from pymysql import Date
-from models import User
+from database import get_database, sqlalchemy_engine
+from models import metadata
+
+
+
 app = FastAPI()
-@app.get("/partnerHandcontext")
-async def root():
-    data=open("partner.json","r")
-    response=json.load(data)
-    return response
+
+@app.on_event("startup")
+async def startup():
+    await get_database().connect()
+    metadata.create_all(sqlalchemy_engine)
+
+@app.on_event("shutdown")
+async def shutdown():
+    await get_database().disconnect()
+# @app.get("/partnerHandcontext")
+# async def root():
+#     data=open("partner.json","r")
+#     response=json.load(data)
+#     return response
+
+
+
+
+
+@app.post('/')
+async def root(
+        payload: dict = Body(...)
+):
+    return payload
 
 @app.get("/customerdata")
 async def customer_data():
@@ -130,10 +153,6 @@ async def loan_data():
     }
 
    
-@app.post('/userdata')
-async def create_user(user:User):
-     
-     return user
 
         
        
