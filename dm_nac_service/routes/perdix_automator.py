@@ -1,8 +1,6 @@
 import json
 import urllib.request
 
-from datetime import datetime
-
 from dm_nac_service.resource.log_config import logger
 from fastapi import APIRouter, status,Body
 from fastapi.responses import JSONResponse
@@ -35,7 +33,8 @@ async def post_automator_data(
     request_info: dict = Body(...),
 
 ):
-    """Function which prepares user data and posts"""
+    """Get data from perdix and prepares 
+    the dedupe data and send back to the NAC endpoint"""
     try:
         # Below is for data published from automator
         # payload = await request_info.json()
@@ -53,10 +52,15 @@ async def post_automator_data(
         middle_name = middle_name if middle_name else ""
         last_name = last_name if last_name else ""
         
-        if(middle_name!=None):
-             full_name=first_name+' '+middle_name+' '+last_name
-        else:
-             full_name=first_name+middle_name+last_name
+        if middle_name and last_name != None :
+            full_name = first_name + " " + middle_name + " " + last_name
+        elif middle_name == None or last_name !=None :
+            full_name = first_name +middle_name + " " + last_name
+        elif middle_name != None and last_name == None:
+            full_name = first_name +" "+  middle_name  + last_name
+        else :
+            full_name = first_name + middle_name + last_name
+        
 
         date_of_birth = customer_data.get("dateOfBirth")
         if "str" != type(date_of_birth).__name__:
@@ -85,20 +89,29 @@ async def post_automator_data(
                         "value": customer_data.get("aadhaarNo")
                     }
                 ],
-                "loanId": str(loan_data.get("id")),
+                "loanId": sm_loan_id,
                 "pincode": str(customer_data.get("pincode")),
             }
 
-        print('1 - prepared data from automator function', dedupe_data)
-
+        
+        
+        logger.info("1 - prepared data from automator function {0}".format(dedupe_data))
         # Posting the data to the dedupe API
         dedupe_response = await create_dedupe(dedupe_data)
-        print('12 - coming back to automator function', dedupe_response)
+        logger.info("12 - coming back to automator function {0}".format(dedupe_response))
+        
+        
         dedupe_response_status = hanlde_response_status(dedupe_response)
+        
         dedupe_response_body = hanlde_response_body(dedupe_response)
         if(dedupe_response_status == 200):
-            print('12a Success - response from create dedupe')
+            
+            logger.info('12a-Success response from create dedupe')
+            
+            
+            
             dedupe_data_respose = hanlde_response_body(dedupe_response)
+            
             is_dedupe_present = dedupe_data_respose.get('isDedupePresent')
             str_fetch_dedupe_info = dedupe_data_respose.get('dedupeReferenceId')
 
@@ -109,12 +122,14 @@ async def post_automator_data(
                                                          message_remarks,
                                                          'PROCEED', message_remarks)
                 if(update_loan_info.status_code == 200):
-                    print('14a - updated loan information with dedupe reference to Perdix', update_loan_info)
+                    logger.info('14a - updated loan information with dedupe reference to Perdix {0}'.format(update_loan_info))
+                    
                     payload['partnerHandoffIntegration']['status'] = 'SUCCESS'
                     payload['partnerHandoffIntegration']['partnerReferenceKey'] = str_fetch_dedupe_info
                 else:
                     perdix_update_unsuccess = hanlde_response_body(update_loan_info)
                     result = JSONResponse(status_code=500, content=perdix_update_unsuccess)
+                    logger.error('perdix update {0}'.format(result))
                     payload['partnerHandoffIntegration']['status'] = 'FAILURE'
                     payload['partnerHandoffIntegration']['partnerReferenceKey'] = ''
             else:
@@ -127,21 +142,23 @@ async def post_automator_data(
                                                          'PROCEED', message_remarks)
 
                     if (update_loan_info.status_code == 200):
-                        print('14a - updated loan information with dedupe reference to Perdix', update_loan_info)
+                        logger.info('14a - updated loan information with dedupe reference to Perdix {0}'.format(update_loan_info))
+                        
                         payload['partnerHandoffIntegration']['status'] = 'SUCCESS'
                         payload['partnerHandoffIntegration']['partnerReferenceKey'] = str_fetch_dedupe_info
                     else:
                         perdix_update_unsuccess = hanlde_response_body(update_loan_info)
                         result = JSONResponse(status_code=500, content=perdix_update_unsuccess)
+                        logger.error('perdix update {0}'.format(result))
                         payload['partnerHandoffIntegration']['status'] = 'FAILURE'
                         payload['partnerHandoffIntegration']['partnerReferenceKey'] = ''
-                    print('14b - updated loan information with dedupe reference to Perdix', update_loan_info)
+                    
                 else:
                     update_loan_info = await update_loan('DEDUPE', sm_loan_id, str_fetch_dedupe_info, 'Dedupe',
                                                          message_remarks,
                                                          'PROCEED', message_remarks)
                     if (update_loan_info.status_code == 200):
-                        print('14a - updated loan information with dedupe reference to Perdix', update_loan_info)
+                        logger.info('update loan {0}'.format(update_loan_info))
                         payload['partnerHandoffIntegration']['status'] = 'SUCCESS'
                         payload['partnerHandoffIntegration']['partnerReferenceKey'] = str_fetch_dedupe_info
                     else:
@@ -149,31 +166,33 @@ async def post_automator_data(
                         result = JSONResponse(status_code=500, content=perdix_update_unsuccess)
                         payload['partnerHandoffIntegration']['status'] = 'FAILURE'
                         payload['partnerHandoffIntegration']['partnerReferenceKey'] = ''
-                    print('14c - updated loan information with dedupe reference to Perdix', update_loan_info)
+                    
 
             result = payload
 
         else:
             dedupe_response_body_message = dedupe_response_body.get('message')
-            print('12a Failure - response from create dedupe', dedupe_response_body_message)
+           
             update_loan_info = await update_loan('DEDUPE', sm_loan_id, '', 'Rejected',
                                                  str(dedupe_response_body_message),
                                                  'PROCEED', str(dedupe_response_body_message))
             if (update_loan_info.status_code == 200):
-                print('14a - updated loan information with dedupe reference to Perdix', update_loan_info)
+                logger.info('update loan {0}'.format(update_loan_info))
+                
                 payload['partnerHandoffIntegration']['status'] = 'FAILURE'
                 payload['partnerHandoffIntegration']['partnerReferenceKey'] = ''
             else:
                 perdix_update_unsuccess = hanlde_response_body(update_loan_info)
                 result = JSONResponse(status_code=500, content=perdix_update_unsuccess)
+                
                 payload['partnerHandoffIntegration']['status'] = 'FAILURE'
                 payload['partnerHandoffIntegration']['partnerReferenceKey'] = ''
-            print('14c - updated loan information with dedupe reference to Perdix', update_loan_info)
-            logger.error(f"{datetime.now()} - post_automator_data - 150 - {dedupe_response_body}")
+            
+            logger.error(f" - post_automator_data - 150 - {dedupe_response_body}")
             result = payload
 
     except Exception as e:
-        logger.exception(f"{datetime.now()} - Issue with post_automator_data function, {e.args[0]}")
+        logger.exception(f" - Issue with post_automator_data function, {e.args[0]}")
         result = JSONResponse(status_code=500, content={"message": f"Issue with post_automator_data function, {e.args[0]}"})
     return result
 
@@ -185,7 +204,8 @@ async def post_sanction_automator_data(
     # Below is to test manually by providing json data in request body
     request_info: dict = Body(...),
 ):
-    """Function which prepares user data and posts"""
+    """Get data from perdix and prepares 
+    the sanction data and send back to the NAC endpoint"""
     try:
         
         # payload = await request_info.json()
@@ -320,18 +340,20 @@ async def post_sanction_automator_data(
         sanction_data['gst'] = 0
         sanction_data['occupation']="SALARIED_OTHER"
 
-        print('1 - Sanction Data from Perdix and Sending the data to create sanction function', sanction_data)
+        
         sanction_response = await create_sanction(sanction_data)
         sanction_response_status = hanlde_response_status(sanction_response)
         sanction_response_body = hanlde_response_body(sanction_response)
 
-        print(f"------------{sanction_response_body}")
+        
         if(sanction_response_status == 200):
+            logger.info('perdix sanction {0}'.format(sanction_response))
 
             get_sanction_ref = await find_sanction(sm_loan_id)
             get_sanction_ref_status = hanlde_response_status(get_sanction_ref)
             response_body_json = hanlde_response_body(get_sanction_ref)
             if(get_sanction_ref_status == 200):
+                logger.info('get_sanction_ref {0}'.format(get_sanction_ref))
                 reference_id = str(response_body_json.get('customerId'))
                 message_remarks = 'Customer Created Successfully'
 
@@ -340,19 +362,21 @@ async def post_sanction_automator_data(
                                                      'PROCEED', message_remarks)
                 update_loan_info_status = hanlde_response_status(update_loan_info)
                 if(update_loan_info_status == 200):
+                    logger.info('update_loan_info {0}'.format(update_loan_info))
+                    
 
                     payload['partnerHandoffIntegration']['status'] = 'SUCCESS'
                     payload['partnerHandoffIntegration']['partnerReferenceKey'] = reference_id
                     result = payload
                 else:
                     loan_update_error = hanlde_response_body(get_sanction_ref)
-                    logger.error(f"{datetime.now()} - post_sanction_automator_data - 426 - {loan_update_error}")
+                    logger.error(f" - post_sanction_automator_data - 426 - {loan_update_error}")
                     result = JSONResponse(status_code=500, content=loan_update_error)
                     payload['partnerHandoffIntegration']['status'] = 'FAILURE'
                     payload['partnerHandoffIntegration']['partnerReferenceKey'] = ''
                     result = payload
             else:
-                logger.error(f"{datetime.now()} - post_sanction_automator_data - 426 - {response_body_json}")
+                logger.error(f" post_sanction_automator_data - 426 - {response_body_json}")
                 result = JSONResponse(status_code=500, content=response_body_json)
                 payload['partnerHandoffIntegration']['status'] = 'FAILURE'
                 payload['partnerHandoffIntegration']['partnerReferenceKey'] = ''
@@ -364,13 +388,13 @@ async def post_sanction_automator_data(
             sanction_response_get_body_value = sanction_response_get_body_json.get('content').get('value')
             update_loan_info = await update_loan('SANCTION', sm_loan_id, '', 'Rejected', str(sanction_response_get_body_value),
                                                  'PROCEED', str(sanction_response_get_body_value))
-            logger.error(f"{datetime.now()} - post_sanction_automator_data - 452 - {sanction_response_body}")
+            logger.error(f"- post_sanction_automator_data - 452 - {sanction_response_body}")
             result = JSONResponse(status_code=500, content=sanction_response_body)
             payload['partnerHandoffIntegration']['status'] = 'FAILURE'
             payload['partnerHandoffIntegration']['partnerReferenceKey'] = ''
             result = payload
     except Exception as e:
-        logger.exception(f"{datetime.now()} - Issue with post_sanction_automator_data function, {e.args[0]}")
+        logger.exception(f" Issue with post_sanction_automator_data function, {e.args[0]}")
         result = JSONResponse(status_code=500,content={"message": f"Issue with post_automator_data function, {e.args[0]}"})
     return result
 
@@ -382,6 +406,8 @@ async def post_disbursement_automator_data(
     # Below is to test manually by providing json data in request body
     request_info: dict = Body(...),
 ):
+    """Get data from perdix and prepares 
+    the disbursement data and send back to the NAC endpoint"""
     try:
         database = get_database()
         
@@ -396,7 +422,7 @@ async def post_disbursement_automator_data(
         bank_accounts_info = {}
         if len(customer_data["customerBankAccounts"]) > 0:
             bank_accounts_info = customer_data["customerBankAccounts"][0]
-        print('1 - Fetch customer Id and Sanction Reference Id from DB', sm_loan_id)
+        
         customer_sanction_response = await find_customer_sanction(sm_loan_id)
         customer_sanction_response_status = hanlde_response_status(customer_sanction_response)
         customer_sanction_response_body = hanlde_response_body(customer_sanction_response)
@@ -404,10 +430,9 @@ async def post_disbursement_automator_data(
             sanction_ref_id = customer_sanction_response_body.get('sanctionRefId')
             customer_id = customer_sanction_response_body.get('customerId')
             
-            print('2 - Response from DB with customer id and sanction ref id', customer_sanction_response)
+            
             originator_id = get_env_or_fail(NAC_SERVER, 'originator-id', NAC_SERVER + 'originator ID not configured')
-            print('3 - Originator ID from env', originator_id)
-
+           
             disbursement_info = {
                 "originatorId": originator_id,
                 "sanctionReferenceId": int(sanction_ref_id),
@@ -419,15 +444,16 @@ async def post_disbursement_automator_data(
                 "insuranceAmount": loan_data.get("insuranceFee"),
                 "disbursementDate": loan_data.get("loanDisbursementDate")
             }
-            print('4 - Data Prepared to post to NAC disbursement endpoint', disbursement_info)
+            
             # Real Endpoint
             nac_disbursement_response = await create_disbursement(disbursement_info)
-            print('5 - Response from NAC disbursement endpoint', nac_disbursement_response)
+            
             nac_disbursement_response_status = hanlde_response_status(nac_disbursement_response)
             nac_disbursement_response_body = hanlde_response_body(nac_disbursement_response)
 
             if(nac_disbursement_response_status == 200):
-                print('5a - Response from NAC disbursement endpoint', nac_disbursement_response_body)
+                logger.info('disbursement response {0}'.format(nac_disbursement_response_status))
+                
                 disbursement_message = nac_disbursement_response_body['content']['message']
                 disbursement_reference_id = nac_disbursement_response_body['content']['value']['disbursementReferenceId']
                 payload['partnerHandoffIntegration']['status'] = 'SUCCESS'
@@ -437,13 +463,14 @@ async def post_disbursement_automator_data(
                                                      'PROCEED', disbursement_message)
                 update_loan_info_status = hanlde_response_status(update_loan_info)
                 if (update_loan_info_status == 200):
+                    logger.info('update_loan_info_status {0}'.format(update_loan_info_status))
 
                     payload['partnerHandoffIntegration']['status'] = 'SUCCESS'
                     payload['partnerHandoffIntegration']['partnerReferenceKey'] = disbursement_reference_id
                     result = payload
                 else:
                     loan_update_error = hanlde_response_body(update_loan_info)
-                    logger.error(f"{datetime.now()} - post_sanction_automator_data - 426 - {loan_update_error}")
+                    logger.error(f"post_sanction_automator_data - 426 - {loan_update_error}")
                     result = JSONResponse(status_code=500, content=loan_update_error)
                     payload['partnerHandoffIntegration']['status'] = 'FAILURE'
                     payload['partnerHandoffIntegration']['partnerReferenceKey'] = ''
@@ -455,20 +482,22 @@ async def post_disbursement_automator_data(
                 payload['partnerHandoffIntegration']['status'] = 'FAILURE'
                 payload['partnerHandoffIntegration']['partnerReferenceKey'] = ''
                 nac_disbursement_response_body_message = nac_disbursement_response_body.get('content').get('message')
-                print('5b - Response from NAC disbursement endpoint', nac_disbursement_response_body.get('content').get('message'))
-                logger.error(f"{datetime.now()} - Issue with post_disbursement_automator_data function")
+               
+                logger.error(f" Issue with post_disbursement_automator_data function")
                 update_loan_info = await update_loan('DISBURSEMENT', sm_loan_id, '', 'Rejected',
                                                      nac_disbursement_response_body_message,
                                                      'PROCEED', nac_disbursement_response_body_message)
                 update_loan_info_status = hanlde_response_status(update_loan_info)
                 if (update_loan_info_status == 200):
+                    # logger.info('update_loan_info_status {0}'.format(update_loan_info_status))
+                    
 
                     payload['partnerHandoffIntegration']['status'] = 'FAILURE'
                     payload['partnerHandoffIntegration']['partnerReferenceKey'] = ''
                     result = payload
                 else:
                     loan_update_error = hanlde_response_body(update_loan_info)
-                    logger.error(f"{datetime.now()} - post_sanction_automator_data - 426 - {loan_update_error}")
+                    logger.error(f"post_sanction_automator_data - 426 - {loan_update_error}")
                     result = JSONResponse(status_code=500, content=loan_update_error)
                     payload['partnerHandoffIntegration']['status'] = 'FAILURE'
                     payload['partnerHandoffIntegration']['partnerReferenceKey'] = ''
@@ -476,10 +505,10 @@ async def post_disbursement_automator_data(
                 result = JSONResponse(status_code=500, content={"message": f"Issue with post_disbursement_automator_data function"})
         else:
            
-            logger.error(f"{datetime.now()} - Issue with post_disbursement_automator_data function")
+            logger.error(f"Issue with post_disbursement_automator_data function")
             result = JSONResponse(status_code=500, content={"message": f"Issue with post_disbursement_automator_data function"})
     except Exception as e:
-        logger.exception(f"{datetime.now()} - Issue with post_disbursement_automator_data function, {e.args[0]}")
+        logger.exception(f"Issue with post_disbursement_automator_data function, {e.args[0]}")
         result = JSONResponse(status_code=500, content={"message": f"Issue with post_disbursement_automator_data function, {e.args[0]}"})
     return result
 
@@ -499,12 +528,12 @@ async def update_loan(
         get_loan_info = await perdix_fetch_loan(loan_id)
         loan_response_decode_status = hanlde_response_status(get_loan_info)
         loan_response_decode_body = hanlde_response_body(get_loan_info)
-        ('printing loan info ', loan_response_decode_body)
+       
         if(loan_response_decode_status == 200):
+            logger.info('loan_response_decode_status {0}'.format(loan_response_decode_status))
 
             get_loan_info = loan_response_decode_body
-            ('printing loan info ', get_loan_info)
-           
+          
 
             if "rejectReason" in get_loan_info:
                 get_loan_info['rejectReason'] = reject_reason
@@ -546,20 +575,21 @@ async def update_loan(
 
             # Below is for loan Id 317
             prepare_loan_info['loanAccount']['tenure'] = 24
-           
-            print('before updateing perdix loan', prepare_loan_info)
             update_perdix_loan = await perdix_update_loan(prepare_loan_info)
             perdix_update_loan_response_decode_status = hanlde_response_status(update_perdix_loan)
             loan_response_decode_body = hanlde_response_body(update_perdix_loan)
             if(perdix_update_loan_response_decode_status == 200):
-                print('after updateing perdix loan', loan_response_decode_body)
+                logger.info('perdix_update_loan_response_decode_status {0}'.format(perdix_update_loan_response_decode_status))
+
+                
+                
                 result = JSONResponse(status_code=200, content=loan_response_decode_body)
             else:
-                logger.error(f"{datetime.now()} - update_loan - 573 - {loan_response_decode_body}")
+                logger.error(f" update_loan - 573 - {loan_response_decode_body}")
                 result = JSONResponse(status_code=404, content=loan_response_decode_body)
 
         else:
-            logger.error(f"{datetime.now()} - update_loan - 573 - {loan_response_decode_body}")
+            logger.error(f"update_loan - 573 - {loan_response_decode_body}")
             result = JSONResponse(status_code=404, content=loan_response_decode_body)
     except Exception as e:
         logger.exception(f"Issue with update_loan function, {e.args[0]}")
@@ -589,30 +619,30 @@ async def update_sanction_in_db():
     try:
         database = get_database()
         database_record_fetch = await fetch_data_from_db(sanction)
-        print('fetching recrods from db', database_record_fetch)
+        
         for i in database_record_fetch:
             customer_id = i[1]
             sm_loan_id = i[61]
             sanction_gt_response = await nac_get_sanction('sanction', customer_id)
-            print('response from sanction_gt_response', sanction_gt_response)
+            
             sanction_gt_response_status = hanlde_response_status(sanction_gt_response)
             sanction_gt_response_body = hanlde_response_body(sanction_gt_response)
             
             if(sanction_gt_response_status == 200):
-                print('GETTING 200 RESPONSE FROM NAC ',sanction_gt_response_status, sanction_gt_response_body)
+                
                 sanction_status = sanction_gt_response_body.get('content').get('status')
                
                 if (sanction_status == 'SUCCESS'):
-                    print('inside SUCCESS')
+                    
                     sanction_status_value = sanction_gt_response_body['content']['value']
                     sanction_status_value_status = sanction_gt_response_body['content']['value']['status']
                     if (sanction_status_value_status == 'ELIGIBLE'):
-                        print('inside ELIGIBLE')
+                       
                         sanction_status_value_reference_id = sanction_gt_response_body['content']['value'][
                             'sanctionReferenceId']
                         sanction_status_value_bureau_fetch = sanction_gt_response_body['content']['value'][
                             'bureauFetchStatus']
-                        print('coming here', sanction_status_value_reference_id, sanction_status_value_bureau_fetch)
+                        
                         query = sanction.update().where(sanction.c.customer_id == customer_id).values(
                             status=sanction_status_value_status,
                            
@@ -624,13 +654,13 @@ async def update_sanction_in_db():
                                                              sanction_status_value_bureau_fetch,
                                                              'PROCEED', sanction_status_value_bureau_fetch)
                     elif (sanction_status_value_status == 'REJECTED'):
-                        print('inside REJECTED')
+                        
                         sanction_status_value_stage = sanction_gt_response_body['content']['value'][
                             'stage']
                         sanction_status_value_bureau_fetch = sanction_gt_response_body['content']['value'][
                             'bureauFetchStatus']
                         if (sanction_status_value_stage == 'BUREAU_FETCH'):
-                            print('inside BUREAU_FETCH')
+                           
 
                             query = sanction.update().where(sanction.c.customer_id == customer_id).values(
                                 status=sanction_status_value_status,
@@ -642,10 +672,10 @@ async def update_sanction_in_db():
                                                                  sanction_status_value_bureau_fetch,
                                                                  'PROCEED', sanction_status_value_bureau_fetch)
                         else:
-                            print('inside else BUREAU_FETCH')
+                            
                             sanction_status_value_reject_reason = str(response_sanction_status['content']['value'][
                                                                           'rejectReason'])
-                            print(sanction_status_value_reject_reason)
+                            
                             query = sanction.update().where(sanction.c.customer_id == customer_id).values(
                                 status=sanction_status_value_status,
                                 stage=sanction_status_value_stage,
@@ -657,7 +687,6 @@ async def update_sanction_in_db():
                                                                  sanction_status_value_reject_reason,
                                                                  'PROCEED', sanction_status_value_reject_reason)
                     else:
-                        print('inside else not eligible')
                         sanction_status_value_stage = sanction_gt_response_body['content']['value'][
                             'stage']
                         sanction_status_value_bureau_fetch = sanction_gt_response_body['content']['value'][
@@ -691,29 +720,32 @@ async def update_disbursement_in_db():
     try:
         database = get_database()
         database_record_fetch = await fetch_data_from_db(disbursement)
-        print('coming inside update_disbursement_in_db ', database_record_fetch)
+        
         for i in database_record_fetch:
             disbursement_ref_id = i[1]
             sanction_ref_id = i[8]
             customer_id = i[9]
-            print('passing customer id to sanction ', customer_id)
+            
             disbursement_sanction_id = await find_loan_id_from_sanction(customer_id)
             disbursement_sanction_id_status = hanlde_response_status(disbursement_sanction_id)
             disbursement_sanction_id_body = hanlde_response_body(disbursement_sanction_id)
             if(disbursement_sanction_id_status == 200):
-                print('got the customer id from sanction', disbursement_sanction_id_body)
+                logger.info('1-disbursement_sanction_id_status {0}'.format(disbursement_sanction_id_status))
+               
+               
                 sm_loan_id = disbursement_sanction_id_body.get('loanID')
                 get_disbursement_response = await disbursement_get_status('disbursement', disbursement_ref_id)
                 get_disbursement_response_status = hanlde_response_status(get_disbursement_response)
                 get_disbursement_response_body = hanlde_response_body(get_disbursement_response)
                 if(get_disbursement_response_status == 200):
-                    print('SUCCESS 200 FROM ', get_disbursement_response_status, get_disbursement_response_body)
+                    logger.info('get_disbursement_response_status {0}'.format(get_disbursement_response_status))
+                    
                     get_disbursement_response_content = get_disbursement_response_body['content']
                     get_disbursement_response_status = get_disbursement_response_body['content']['status']
                     if (get_disbursement_response_status == 'SUCCESS'):
-                        print('SUCCSDFSKJSLF')
+                       
                         get_disbursement_response_stage = get_disbursement_response_body['content']['value']['stage']
-                        print('disbursement response stage -', get_disbursement_response_stage)
+                        
                         if (get_disbursement_response_stage == 'AMOUNT_DISBURSEMENT'):
                             get_disbursement_response_utr = get_disbursement_response_body['content']['value']['utr']
                             get_disbursement_response_disbursement_status = \
@@ -732,8 +764,7 @@ async def update_disbursement_in_db():
                                                                  get_disbursement_response_disbursement_status,
                                                                  'PROCEED',
                                                                  get_disbursement_response_disbursement_status)
-                            print('disbursement response AMOUNT_DISBURSEMENT -', get_disbursement_response_utr,
-                                  get_disbursement_response_disbursement_status)
+                           
                         else:
                             get_disbursement_response_disbursement_status = get_disbursement_response_body['content']['value']['disbursementStatus']
                             query = disbursement.update().where(
@@ -744,8 +775,7 @@ async def update_disbursement_in_db():
                                 message='',
                                 utr='')
                             disbursement_updated = await database.execute(query)
-                            print('disbursement response AMOUNT_DISBURSEMENT -',
-                                  get_disbursement_response_disbursement_status)
+                            
                     else:
                         if ("value" in get_disbursement_response_content):
 
@@ -760,8 +790,7 @@ async def update_disbursement_in_db():
                                 message='',
                                 utr='')
                             disbursement_updated = await database.execute(query)
-                            print('yes value is there', get_disbursement_response_stage,
-                                  get_disbursement_response_value_status)
+                            
                             update_loan_info = await update_loan('DISBURSEMENT-ITR', sm_loan_id,
                                                                  '', 'Rejected',
                                                                  get_disbursement_response_stage,
@@ -777,7 +806,7 @@ async def update_disbursement_in_db():
                                 message=get_disbursement_response_message,
                                 utr='')
                             disbursement_updated = await database.execute(query)
-                            print(' value is not there', get_disbursement_response_message)
+                            
                             update_loan_info = await update_loan('DISBURSEMENT-ITR', sm_loan_id,
                                                                  '', 'Rejected',
                                                                  get_disbursement_response_stage,

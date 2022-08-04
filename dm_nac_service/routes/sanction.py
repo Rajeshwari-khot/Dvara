@@ -49,12 +49,11 @@ async def find_sanction(
             "dedupeRefId": raw_sanction[57]
         }
 
-        print( '*********************************** SUCCESSFULLY FETCHED SANCTION REFERENCE ID FROM DB  ***********************************', sanction_dict)
+       
         result = JSONResponse(status_code=200, content=sanction_dict)
     except Exception as e:
         logger.exception(f"{datetime.now()} - Issue with find_dedupe function, {e.args[0]}")
-        print(
-            '*********************************** FAILURE FETCHING SANCTION REFERENCE ID FROM DB  ***********************************')
+        
         db_log_error = {"error": 'DB', "error_description": 'Customer ID not found in DB'}
         result = JSONResponse(status_code=500, content=db_log_error)
     return result
@@ -74,20 +73,22 @@ async def create_sanction(
         fetch_dedupe_info_decode = jsonable_encoder(fetch_dedupe_info)
         fetch_dedupe_info_decode_status = fetch_dedupe_info_decode.get('status_code')
         if(fetch_dedupe_info_decode_status == 200):
+            logger.info('fetch_dedupe_info_decode {0}'.format(fetch_dedupe_info_decode))
             response_body = fetch_dedupe_info_decode.get('body')
             response_body_json = json.loads(response_body)
             dedupe_reference_id = response_body_json.get('dedupeRefId')
-            print('2 - extracted dedupe reference id from DB', fetch_dedupe_info)
+            
             sanction_data['dedupeReferenceId'] = int(dedupe_reference_id)
             sanction_dict = sanction_data
-            print('3 - Posting data to NAC create sanction endpoint', sanction_dict)
+            
 
             # Real API response from NAC
             sanction_response = await nac_sanction('uploadSanctionJSON', sanction_dict)
-            print('7 - Getting the dedupe reference from nac_dedupe function - ', sanction_response)
+            
             sanction_response_decode = jsonable_encoder(sanction_response)
             sanction_response_decode_status = sanction_response_decode.get('status_code')
             if(sanction_response_decode_status == 200):
+                logger.info('sanction_response_decode {0}'.format(sanction_response_decode))
 
                 response_body = sanction_response_decode.get('body')
                 response_body_json = json.loads(response_body)
@@ -155,14 +156,13 @@ async def create_sanction(
                         'marital_status': sanction_dict['maritalStatus'],
                         'loan_id': sanction_dict['loanId'],
                     }
-                    print('4 - Storing customer Id from NAC Sanction Endpoint to DB', sanction_info)
+                    
                     insert_query = sanction.insert().values(sanction_info)
-                    print('query', insert_query)
+                    
                     sanction_id = await database.execute(insert_query)
-                    print('5 - Saved Sanction information to DB', sanction_info)
+                    
                     result = JSONResponse(status_code=200, content={"customerid": customer_id})
-                    print('6 - Update customer id to udf42 in Perdix', sanction_info)
-
+                    
                     return result
                 else:
                     log_id = await insert_logs('DB', 'NAC', 'DEDUPE', sanction_response.status_code,
@@ -171,7 +171,7 @@ async def create_sanction(
             else:
                 
                 result = JSONResponse(status_code=500, content=sanction_response_decode)
-            print('5 - Response from NAC Sanction Endpoint', sanction_response)
+            
 
         else:
             response_body = fetch_dedupe_info_decode.get('body')
@@ -179,11 +179,11 @@ async def create_sanction(
             response_body_error = response_body_json.get('error')
             response_body_error_description = response_body_json.get('error_description')
             app_log_error = {"error": response_body_error, "error_description": response_body_error_description}
-            logger.error(f"{datetime.now()} - create_sanction - 190 - {app_log_error}")
+            logger.error(f"create_sanction - 190 - {app_log_error}")
             result = fetch_dedupe_info_decode
 
     except Exception as e:
-        logger.exception(f"{datetime.now()} - Issue with create_sanction function, {e.args[0]}")
+        logger.exception(f" Issue with create_sanction function, {e.args[0]}")
         result = JSONResponse(status_code=500, content={"message": f"Issue with Northern Arc API, {e.args[0]}"})
     return result
 
@@ -203,21 +203,21 @@ async def fileupload_sanction(
         image_id = '94d150e4-6232-4f5e-a341-494d76c5c4bf'
         file_url = file_stream_url + image_id
         tmp_file = "./static/" + image_id
-        print('priting temporary file', tmp_file)
+        
         urllib.request.urlretrieve(file_url, tmp_file)
-        print('file url ', url)
+        
        
         file_name = file.filename
-        print('filename is ', file, file_name)
+        
         file_path = os.path.abspath(('./static/'))
-        print(file_path)
+        
         with open('test', "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
             shutil.copyfile('test', file_path + '/' + file_name)
            
             if not os.path.exists(file_path + 'test'):
             
-                print('yes there is a file')
+                
                 os.remove(file_path + '/' + 'test')
                 
                 shutil.move('test', file_path)
@@ -225,19 +225,20 @@ async def fileupload_sanction(
             else:
                 shutil.move('test', file_path)
                 
-        print('before opening the file')
+        
         with open(file_path + '/' + file_name, 'rb') as a_file:
-            print('printing file name ', a_file)
+            
             file_dict = {"file_to_upload.txt": a_file}
             file_upload_response = requests.post(url, files=file_dict)
-            print('file_upload_response ', file_upload_response.status_code)
-            print('file_upload_response ', file_upload_response.content)
+            
 
 
             # Fake Response for file upload
             #file_upload_response = sanction_file_upload_response1
-            print(file_upload_response['status_code'])
+            
             if(file_upload_response['status_code']!=200):
+                logger.info('file_upload_response {0}'.format(file_upload_response))
+
                 log_id = await insert_logs('NAC', 'FUNCTION', 'sanction_fileupload', '403', 'File upload forbidden',
                                            datetime.now())
 
@@ -253,7 +254,7 @@ async def fileupload_sanction(
                 }
                 insert_query = sanction_fileupload.insert().values(file_upload_info)
                 file_upload_id = await database.execute(insert_query)
-                print('query', insert_query)
+                
         
         log_id = await insert_logs(str(url), 'NAC', str(file_dict), file_upload_response.status_code,
                                    file_upload_response.content, datetime.now())
@@ -273,13 +274,17 @@ async def sanction_status(
         get_sanction_response_status = hanlde_response_status(get_sanction_response)
         get_sanction_response_body = hanlde_response_body(get_sanction_response)
         if(get_sanction_response_status == 200):
+            logger.info('get_sanction_response {0}'.format(get_sanction_response))
+
             
             result = JSONResponse(status_code=500, content=get_sanction_response_body)
         else:
+            logger.error('get_sanction_response {0}'.format(get_sanction_response_body))
+
             
             result = JSONResponse(status_code=500, content=get_sanction_response_body)
     except Exception as e:
-        logger.exception(f"{datetime.now()} - Issue with create_sanction function, {e.args[0]}")
+        logger.exception(f" Issue with create_sanction function, {e.args[0]}")
         result = JSONResponse(status_code=500,
                               content={"message": f"Error Occurred at Northern Arc Post Method - {e.args[0]}"})
     return result
@@ -297,12 +302,11 @@ async def find_loan_id_from_sanction(
         sanction_dict = {
             "loanID": raw_sanction[61]
         }
-        print( '*********************************** SUCCESSFULLY FETCHED LOAN ID BY SANCTION REF ID FROM DB  ***********************************')
+        
         result = JSONResponse(status_code=200, content=sanction_dict)
     except Exception as e:
-        logger.exception(f"{datetime.now()} - Issue with find_dedupe function, {e.args[0]}")
-        print(
-            '*********************************** FAILURE FETCHING SANCTION REFERENCE ID FROM DB  ***********************************')
+        logger.exception(f"Issue with find_dedupe function, {e.args[0]}")
+        
         db_log_error = {"error": 'DB', "error_description": 'Customer ID not found in DB'}
         result = JSONResponse(status_code=500, content=db_log_error)
     return result
@@ -322,6 +326,7 @@ async def download_and_upload_file(customer_id, document_id):
             upload_file_status = hanlde_response_status(upload_file)
             upload_file_body = hanlde_response_body(upload_file)
             if(upload_file.status_code == 200):
+                logger.info('upload_file {0}'.format(upload_file))
 
                
                 result = JSONResponse(status_code=200, content=upload_file_body)
@@ -329,11 +334,11 @@ async def download_and_upload_file(customer_id, document_id):
                
                 result = JSONResponse(status_code=404, content=upload_file_body)
         else:
-            logger.exception(f"{datetime.now()} - Issue with download_and_upload_file function  {download_file_from_stream_response_body}")
+            logger.exception(f"Issue with download_and_upload_file function  {download_file_from_stream_response_body}")
             result = JSONResponse(status_code=404, content=download_file_from_stream_response_body)
     except Exception as e:
-        logger.exception(f"{datetime.now()} - Issue with download_and_upload_file function, {e.args[0]}")
-        print('***** FAILURE DOWNLOADING FILE FROM PERDIX  *****')
+        logger.exception(f" Issue with download_and_upload_file function, {e.args[0]}")
+        
         db_log_error = {"error": 'DB', "error_description": 'Problem with NAC endpoint'}
         result = JSONResponse(status_code=500, content=db_log_error)
     return result

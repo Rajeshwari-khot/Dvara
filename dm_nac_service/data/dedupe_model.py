@@ -3,7 +3,7 @@ from typing import Optional, List, Union
 
 import sqlalchemy
 from pydantic import BaseModel, Field
-from sqlalchemy.dialects.mysql import LONGTEXT
+
 
 
 class DedupeTypes(BaseModel):
@@ -45,7 +45,7 @@ class CreateDedupe(BaseModel):
 
 class DedupeCreate(BaseModel):
     __root__: List[CreateDedupe]
-    #   pass
+   
 
 
 class DedupeDB(DedupeTableBase):
@@ -85,9 +85,6 @@ dedupe = sqlalchemy.Table(
     sqlalchemy.Column("ref_date_of_birth", sqlalchemy.String(length=250), nullable=True),
     sqlalchemy.Column("ref_mobile_phone", sqlalchemy.String(length=250), nullable=True),
     sqlalchemy.Column("ref_account_number_loan_ref", sqlalchemy.String(length=250), nullable=True),
-
-    # sqlalchemy.Column("request_data", LONGTEXT, nullable=True),
-
     sqlalchemy.Column("created_date", sqlalchemy.DateTime(), nullable=True),
 )
 
